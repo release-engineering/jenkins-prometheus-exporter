@@ -1,21 +1,22 @@
 FROM fedora:latest
 
 LABEL maintainer="Ralph Bean" \
-      summary="A prometheus exporter for pulp." \
+      summary="A prometheus exporter for jenkins." \
       distribution-scope="public"
 
 RUN dnf install -y --setopt=tsflags=nodocs \
-                python3-arrow \
-                python3-requests \
-                python3-prometheus_client \
+                python3-pip \
     && dnf clean all
+
+COPY requirements.txt /usr/local/requirements.txt
+RUN pip3 install --no-dependencies -r /usr/local/requirements.txt
 
 # Allow a non-root user to install a custom root CA at run-time
 RUN chmod g+w /etc/pki/tls/certs/ca-bundle.crt
 
-COPY pulp-prometheus-exporter.py /usr/local/bin/.
+COPY jenkins-prometheus-exporter.py /usr/local/bin/.
 COPY docker/ /docker/
 
 USER 1001
 EXPOSE 8000
-ENTRYPOINT ["/docker/entrypoint.sh", "/usr/local/bin/pulp-prometheus-exporter.py"]
+ENTRYPOINT ["/docker/entrypoint.sh", "/usr/local/bin/jenkins-prometheus-exporter.py"]
