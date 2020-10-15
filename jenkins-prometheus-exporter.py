@@ -6,13 +6,12 @@ Scrapes jenkins on an interval and exposes metrics about builds.
 It would be better for jenkins to offer a prometheus /metrics endpoint of its own.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import logging
 import os
 import time
 
-import arrow
 import dogpile.cache
 import requests
 
@@ -35,7 +34,9 @@ JENKINS_USERNAME = os.environ['JENKINS_USERNAME']  # Required
 JENKINS_TOKEN = os.environ['JENKINS_TOKEN']  # Required
 AUTH = (JENKINS_USERNAME, JENKINS_TOKEN)
 
-BUILD_LABELS = ['build_type']
+BUILD_LABELS = ['job']
+
+BUILD_CACHE = {}
 
 # In seconds
 DURATION_BUCKETS = [
@@ -53,18 +54,22 @@ metrics = {}
 
 
 error_states = [
-    'error',
-]
-waiting_states = [
-    'waiting',
+    'FAILURE',
+    'ABORTED',
+    'UNSTABLE',
 ]
 in_progress_states = [
-    'running',
+    None,
 ]
 
 
 class Incompletebuild(Exception):
     """ Error raised when a jenkins build is not complete. """
+    pass
+
+
+class GarbageCollectedBuild(Exception):
+    """ Error raised when a jenkins build is just gone. """
     pass
 
 
@@ -87,74 +92,89 @@ def retrieve_jenkins_jobs(url):
     return results
 
 
-def retrieve_recent_jenkins_builds(job):
+def _retrieve_build_details(job, build):
+    url = build['url'] + "/api/json"
+    response = requests.get(url, auth=AUTH)
+    if response.status_code == 404:
+        raise GarbageCollectedBuild()
+    response.raise_for_status()
+    data = response.json()
+    return data
+
+
+def retrieve_build_details(job, build):
+    if job['name'] not in BUILD_CACHE:
+        BUILD_CACHE[job['name']] = {}
+
+    if build['number'] not in BUILD_CACHE[job['name']]:
+        details = _retrieve_build_details(job, build)
+        if details['result'] in in_progress_states:
+            # Skip populating cache for incomplete builds.
+            return details
+        BUILD_CACHE[job['name']][build['number']] = details
+
+    return BUILD_CACHE[job['name']][build['number']]
+
+
+def retrieve_all_seen_jenkins_builds(job):
     url = job['url'] + "/api/json"
-
-    raise NotImplementedError(
-        "Working here.  How to avoid querying for every build individually to get "
-        "details or figure out when to stop.  Is there no ?since= argument?")
-
     response = requests.get(url, auth=AUTH)
     response.raise_for_status()
     data = response.json()
-    return data['jobs']
+
+    seen = []
+    seen = [build['number'] for build in data['builds']]
+    for build in data['builds']:
+        yield build
+    for number in reversed(sorted(BUILD_CACHE[job['name']].keys())):
+        if number in seen:
+            continue
+        yield BUILD_CACHE[job['name']][number]
 
 
-def retrieve_open_jenkins_builds():
-    url = JENKINS_URL + '/jenkins/api/v2/builds/search/'
-    query = {
-        'criteria': {
-            'fields': ['start_time', 'finish_time', 'state', 'build_type'],
-            'filters': {
-                'state': {
-                    '$in': in_progress_states,
-                },
-            },
-        },
-    }
-    response = requests.post(url, json=query, auth=AUTH)
-    response.raise_for_status()
-    return response.json()
+def retrieve_recent_jenkins_builds(job):
 
+    results = []
+    for build in retrieve_all_seen_jenkins_builds(job):
+        try:
+            details = retrieve_build_details(job, build)
+        except GarbageCollectedBuild:
+            break
 
-def retrieve_waiting_jenkins_builds():
-    url = JENKINS_URL + '/jenkins/api/v2/builds/search/'
-    query = {
-        'criteria': {
-            'fields': ['start_time', 'finish_time', 'state', 'build_type'],
-            'filters': {
-                'state': {
-                    '$in': waiting_states,
-                },
-            },
-        },
-    }
-    response = requests.post(url, json=query, auth=AUTH)
-    response.raise_for_status()
-    return response.json()
+        timestamp = datetime.fromtimestamp(details['timestamp'] / 1000.0, tz=timezone.utc)
+        if timestamp < START:
+            break
+        details['job'] = job['name']
+        results.append(details)
+
+    return results
 
 
 def jenkins_builds_total(builds):
     counts = {}
     for build in builds:
-        build_type = build['build_type']
+        job = build['job']
 
-        counts[build_type] = counts.get(build_type, 0)
-        counts[build_type] += 1
+        counts[job] = counts.get(job, 0)
+        counts[job] += 1
 
-    for build_type in counts:
-        yield counts[build_type], [build_type]
+    for job in counts:
+        yield counts[job], [job]
 
 
 def calculate_duration(build):
-    if not build['finish_time']:
+    if not build['result']:
         # Duration is undefined.
         # We could consider using `time.time()` as the duration, but that would produce durations
         # that change for incomlete builds -- and changing durations like that is incompatible with
         # prometheus' histogram and counter model.  So - we just ignore builds until they are
         # complete and have a final duration.
         raise Incompletebuild("build is not yet complete.  Duration is undefined.")
-    return (arrow.get(build['finish_time']) - arrow.get(build['start_time'])).total_seconds()
+    for action in build['actions']:
+        if action['_class'] == 'jenkins.metrics.impl.TimeInQueueAction':
+            return (action['blockedTimeMillis'] + action['buildingDurationMillis']) / 1000.0
+
+    raise ValueError("No TimeInQueueAction plugin found")
 
 
 def find_applicable_buckets(duration):
@@ -173,7 +193,7 @@ def jenkins_build_duration_seconds(builds):
     durations = {}
 
     for build in builds:
-        build_type = build['build_type']
+        job = build['job']
 
         try:
             duration = calculate_duration(build)
@@ -181,27 +201,27 @@ def jenkins_build_duration_seconds(builds):
             continue
 
         # Initialize structures
-        durations[build_type] = durations.get(build_type, 0)
-        counts[build_type] = counts.get(build_type, {})
+        durations[job] = durations.get(job, 0)
+        counts[job] = counts.get(job, {})
         for bucket in duration_buckets:
-            counts[build_type][bucket] = counts[build_type].get(bucket, 0)
+            counts[job][bucket] = counts[job].get(bucket, 0)
 
         # Increment applicable bucket counts and duration sums
-        durations[build_type] += duration
+        durations[job] += duration
         for bucket in find_applicable_buckets(duration):
-            counts[build_type][bucket] += 1
+            counts[job][bucket] += 1
 
-    for build_type in counts:
+    for job in counts:
         buckets = [
-            (str(bucket), counts[build_type][bucket])
+            (str(bucket), counts[job][bucket])
             for bucket in duration_buckets
         ]
-        yield buckets, durations[build_type], [build_type]
+        yield buckets, durations[job], [job]
 
 
 def only(builds, states):
     for build in builds:
-        state = build['state']
+        state = build['result']
         if state in states:
             yield build
 
@@ -209,9 +229,13 @@ def only(builds, states):
 def scrape():
     global START
     today = datetime.utcnow()
-    START = datetime.combine(today, datetime.min.time()).isoformat()
+    START = datetime.combine(today, datetime.min.time())
+    START = START.replace(tzinfo=timezone.utc)
 
-    builds = retrieve_recent_jenkins_builds()
+    builds = []
+    jobs = retrieve_jenkins_jobs(JENKINS_URL)
+    for job in jobs:
+        builds.extend(retrieve_recent_jenkins_builds(job))
 
     jenkins_builds_total_family = CounterMetricFamily(
         'jenkins_builds_total', 'Count of all jenkins builds', labels=BUILD_LABELS
@@ -231,26 +255,26 @@ def scrape():
         'Count of all in-progress jenkins builds',
         labels=BUILD_LABELS,
     )
-    in_progress_builds = retrieve_open_jenkins_builds()
+    in_progress_builds = only(builds, states=in_progress_states)
     for value, labels in jenkins_builds_total(in_progress_builds):
         jenkins_in_progress_builds_family.add_metric(labels, value)
 
-    jenkins_waiting_builds_family = GaugeMetricFamily(
-        'jenkins_waiting_builds',
-        'Count of all waiting, unscheduled jenkins builds',
-        labels=BUILD_LABELS,
-    )
-    waiting_builds = retrieve_waiting_jenkins_builds()
-    for value, labels in jenkins_builds_total(waiting_builds):
-        jenkins_waiting_builds_family.add_metric(labels, value)
+    #jenkins_waiting_builds_family = GaugeMetricFamily(
+    #    'jenkins_waiting_builds',
+    #    'Count of all waiting, unscheduled jenkins builds',
+    #    labels=BUILD_LABELS,
+    #)
+    #waiting_builds = retrieve_waiting_jenkins_builds()
+    #for value, labels in jenkins_builds_total(waiting_builds):
+    #    jenkins_waiting_builds_family.add_metric(labels, value)
 
-    jenkins_build_duration_seconds_family = HistogramMetricFamily(
-        'jenkins_build_duration_seconds',
-        'Histogram of jenkins build durations',
-        labels=BUILD_LABELS,
-    )
-    for buckets, duration_sum, labels in jenkins_build_duration_seconds(builds):
-        jenkins_build_duration_seconds_family.add_metric(labels, buckets, sum_value=duration_sum)
+    #jenkins_build_duration_seconds_family = HistogramMetricFamily(
+    #    'jenkins_build_duration_seconds',
+    #    'Histogram of jenkins build durations',
+    #    labels=BUILD_LABELS,
+    #)
+    #for buckets, duration_sum, labels in jenkins_build_duration_seconds(builds):
+    #    jenkins_build_duration_seconds_family.add_metric(labels, buckets, sum_value=duration_sum)
 
     # Replace this in one atomic operation to avoid race condition to the Expositor
     metrics.update(
@@ -258,8 +282,8 @@ def scrape():
             'jenkins_builds_total': jenkins_builds_total_family,
             'jenkins_build_errors_total': jenkins_build_errors_total_family,
             'jenkins_in_progress_builds': jenkins_in_progress_builds_family,
-            'jenkins_waiting_builds': jenkins_waiting_builds_family,
-            'jenkins_build_duration_seconds': jenkins_build_duration_seconds_family,
+            #'jenkins_waiting_builds': jenkins_waiting_builds_family,
+            #'jenkins_build_duration_seconds': jenkins_build_duration_seconds_family,
         }
     )
 
