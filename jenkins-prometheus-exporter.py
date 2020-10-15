@@ -126,7 +126,7 @@ def retrieve_all_seen_jenkins_builds(job):
     seen = [build['number'] for build in data['builds']]
     for build in data['builds']:
         yield build
-    for number in reversed(sorted(BUILD_CACHE[job['name']].keys())):
+    for number in reversed(sorted(BUILD_CACHE.get(job['name'], {}).keys())):
         if number in seen:
             continue
         yield BUILD_CACHE[job['name']][number]
