@@ -15,8 +15,6 @@ import time
 import dogpile.cache
 import requests
 
-session = requests.Session()
-
 from prometheus_client.core import (
     REGISTRY,
     CounterMetricFamily,
@@ -24,6 +22,8 @@ from prometheus_client.core import (
     HistogramMetricFamily,
 )
 from prometheus_client import start_http_server
+
+session = requests.Session()
 
 cache = dogpile.cache.make_region().configure(
     'dogpile.cache.memory', expiration_time=1000
