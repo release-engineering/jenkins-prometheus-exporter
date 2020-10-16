@@ -310,5 +310,5 @@ if __name__ == '__main__':
     start_http_server(8000)
 
     while True:
-        time.sleep(int(os.environ.get('jenkins_POLL_INTERVAL', '3')))
+        time.sleep(int(os.environ.get('JENKINS_POLL_INTERVAL', '3')))
         scrape()
