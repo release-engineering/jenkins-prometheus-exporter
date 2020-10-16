@@ -174,7 +174,7 @@ def calculate_duration(build):
         # complete and have a final duration.
         raise Incompletebuild("build is not yet complete.  Duration is undefined.")
     for action in build['actions']:
-        if action['_class'] == 'jenkins.metrics.impl.TimeInQueueAction':
+        if action.get('_class') == 'jenkins.metrics.impl.TimeInQueueAction':
             return (action['blockedTimeMillis'] + action['buildingDurationMillis']) / 1000.0
 
     raise ValueError("No TimeInQueueAction plugin found")
