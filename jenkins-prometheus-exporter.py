@@ -15,6 +15,8 @@ import time
 import dogpile.cache
 import requests
 
+session = requests.Session()
+
 from prometheus_client.core import (
     REGISTRY,
     CounterMetricFamily,
@@ -85,7 +87,7 @@ class GarbageCollectedBuild(Exception):
 def retrieve_jenkins_jobs(url):
     url = url + '/api/json'
 
-    response = requests.get(url, auth=AUTH)
+    response = session.get(url, auth=AUTH)
     response.raise_for_status()
 
     data = response.json()
@@ -102,7 +104,7 @@ def retrieve_jenkins_jobs(url):
 
 def _retrieve_build_details(job, build):
     url = build['url'] + "/api/json"
-    response = requests.get(url, auth=AUTH)
+    response = session.get(url, auth=AUTH)
     if response.status_code == 404:
         raise GarbageCollectedBuild()
     response.raise_for_status()
@@ -126,7 +128,7 @@ def retrieve_build_details(job, build):
 
 def retrieve_all_seen_jenkins_builds(job):
     url = job['url'] + "/api/json"
-    response = requests.get(url, auth=AUTH)
+    response = session.get(url, auth=AUTH)
     response.raise_for_status()
     data = response.json()
 
