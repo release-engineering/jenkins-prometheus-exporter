@@ -262,15 +262,6 @@ def scrape():
     for value, labels in jenkins_builds_total(in_progress_builds):
         jenkins_in_progress_builds_family.add_metric(labels, value)
 
-    #jenkins_waiting_builds_family = GaugeMetricFamily(
-    #    'jenkins_waiting_builds',
-    #    'Count of all waiting, unscheduled jenkins builds',
-    #    labels=BUILD_LABELS,
-    #)
-    #waiting_builds = retrieve_waiting_jenkins_builds()
-    #for value, labels in jenkins_builds_total(waiting_builds):
-    #    jenkins_waiting_builds_family.add_metric(labels, value)
-
     jenkins_build_duration_seconds_family = HistogramMetricFamily(
         'jenkins_build_duration_seconds',
         'Histogram of jenkins build durations',
@@ -285,7 +276,6 @@ def scrape():
             'jenkins_builds_total': jenkins_builds_total_family,
             'jenkins_build_errors_total': jenkins_build_errors_total_family,
             'jenkins_in_progress_builds': jenkins_in_progress_builds_family,
-            #'jenkins_waiting_builds': jenkins_waiting_builds_family,
             'jenkins_build_duration_seconds': jenkins_build_duration_seconds_family,
         }
     )
