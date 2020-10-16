@@ -71,6 +71,11 @@ class Incompletebuild(Exception):
     pass
 
 
+class Unmeasurablebuild(Exception):
+    """ Error raised when a jenkins build is missing the measurement plugin. """
+    pass
+
+
 class GarbageCollectedBuild(Exception):
     """ Error raised when a jenkins build is just gone. """
     pass
@@ -177,7 +182,7 @@ def calculate_duration(build):
         if action.get('_class') == 'jenkins.metrics.impl.TimeInQueueAction':
             return (action['blockedTimeMillis'] + action['buildingDurationMillis']) / 1000.0
 
-    raise ValueError("No TimeInQueueAction plugin found")
+    raise Unmeasurablebuild("No TimeInQueueAction plugin found")
 
 
 def find_applicable_buckets(duration):
@@ -201,6 +206,8 @@ def jenkins_build_duration_seconds(builds):
         try:
             duration = calculate_duration(build)
         except Incompletebuild:
+            continue
+        except Unmeasurablebuild:
             continue
 
         # Initialize structures
