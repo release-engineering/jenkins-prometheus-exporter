@@ -30,9 +30,12 @@ cache = dogpile.cache.make_region().configure(
 START = None
 
 JENKINS_URL = os.environ['JENKINS_URL']  # Required
-JENKINS_USERNAME = os.environ['JENKINS_USERNAME']  # Required
-JENKINS_TOKEN = os.environ['JENKINS_TOKEN']  # Required
-AUTH = (JENKINS_USERNAME, JENKINS_TOKEN)
+if 'JENKINS_USERNAME' in os.environ and 'JENKINS_TOKEN' in os.environ:
+    JENKINS_USERNAME = os.environ['JENKINS_USERNAME']
+    JENKINS_TOKEN = os.environ['JENKINS_TOKEN']
+    AUTH = (JENKINS_USERNAME, JENKINS_TOKEN)
+else:
+    AUTH = None
 
 BUILD_LABELS = ['job']
 
