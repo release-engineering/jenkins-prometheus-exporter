@@ -271,13 +271,13 @@ def scrape():
     #for value, labels in jenkins_builds_total(waiting_builds):
     #    jenkins_waiting_builds_family.add_metric(labels, value)
 
-    #jenkins_build_duration_seconds_family = HistogramMetricFamily(
-    #    'jenkins_build_duration_seconds',
-    #    'Histogram of jenkins build durations',
-    #    labels=BUILD_LABELS,
-    #)
-    #for buckets, duration_sum, labels in jenkins_build_duration_seconds(builds):
-    #    jenkins_build_duration_seconds_family.add_metric(labels, buckets, sum_value=duration_sum)
+    jenkins_build_duration_seconds_family = HistogramMetricFamily(
+        'jenkins_build_duration_seconds',
+        'Histogram of jenkins build durations',
+        labels=BUILD_LABELS,
+    )
+    for buckets, duration_sum, labels in jenkins_build_duration_seconds(builds):
+        jenkins_build_duration_seconds_family.add_metric(labels, buckets, sum_value=duration_sum)
 
     # Replace this in one atomic operation to avoid race condition to the Expositor
     metrics.update(
@@ -286,7 +286,7 @@ def scrape():
             'jenkins_build_errors_total': jenkins_build_errors_total_family,
             'jenkins_in_progress_builds': jenkins_in_progress_builds_family,
             #'jenkins_waiting_builds': jenkins_waiting_builds_family,
-            #'jenkins_build_duration_seconds': jenkins_build_duration_seconds_family,
+            'jenkins_build_duration_seconds': jenkins_build_duration_seconds_family,
         }
     )
 
