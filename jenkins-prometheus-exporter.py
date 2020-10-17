@@ -35,7 +35,10 @@ if 'JENKINS_USERNAME' in os.environ and 'JENKINS_TOKEN' in os.environ:
 else:
     AUTH = None
 
-BUILD_LABELS = ['job']
+DEFAULT_IGNORED = '00-all-enabled,01-all-disabled,all,All,My View'
+IGNORED_VIEWS = os.environ.get('JENKINS_IGNORED_VIEWS', DEFAULT_IGNORED).split(',')
+
+BUILD_LABELS = ['job', 'view']
 
 BUILD_CACHE = {}
 
@@ -92,9 +95,11 @@ def retrieve_recent_jenkins_builds(url):
 
     views = {}
     for view in data['views']:
+        if view['name'].strip() in IGNORED_VIEWS:
+            continue
         for job in view['jobs']:
             views[job['name']] = views.get(job['name'], [])
-            views[job['name']].append(view['name'])
+            views[job['name']].append(view['name'].strip())
 
     jobs = []
     builds = []
@@ -105,7 +110,7 @@ def retrieve_recent_jenkins_builds(url):
             builds.extend(_builds)
             continue
 
-        job['views'] = views[job['name']]
+        job['views'] = views.get(job['name'], ['no view defined'])
         jobs.append(job)
 
         for build in all_seen_jenkins_builds(job, job['builds']):
@@ -148,12 +153,16 @@ def jenkins_builds_total(builds):
     counts = {}
     for build in builds:
         job = build['job']
+        views = build['views']
 
-        counts[job] = counts.get(job, 0)
-        counts[job] += 1
+        counts[job] = counts.get(job, {})
+        for view in views:
+            counts[job][view] = counts[job].get(view, 0)
+            counts[job][view] += 1
 
     for job in counts:
-        yield counts[job], [job]
+        for view in counts[job]:
+            yield counts[job][view], [job, view]
 
 
 def calculate_duration(build):
@@ -188,6 +197,7 @@ def jenkins_build_duration_seconds(builds):
 
     for build in builds:
         job = build['job']
+        views = build['views']
 
         try:
             duration = calculate_duration(build)
@@ -197,22 +207,26 @@ def jenkins_build_duration_seconds(builds):
             continue
 
         # Initialize structures
-        durations[job] = durations.get(job, 0)
+        durations[job] = durations.get(job, {})
         counts[job] = counts.get(job, {})
-        for bucket in duration_buckets:
-            counts[job][bucket] = counts[job].get(bucket, 0)
+        for view in views:
+            durations[job][view] = durations[job].get(view, 0)
+            counts[job][view] = counts[job].get(view, {})
+            for bucket in duration_buckets:
+                counts[job][view][bucket] = counts[job].get(bucket, 0)
 
-        # Increment applicable bucket counts and duration sums
-        durations[job] += duration
-        for bucket in find_applicable_buckets(duration):
-            counts[job][bucket] += 1
+            # Increment applicable bucket counts and duration sums
+            durations[job][view] += duration
+            for bucket in find_applicable_buckets(duration):
+                counts[job][view][bucket] += 1
 
     for job in counts:
-        buckets = [
-            (str(bucket), counts[job][bucket])
-            for bucket in duration_buckets
-        ]
-        yield buckets, durations[job], [job]
+        for view in counts[job]:
+            buckets = [
+                (str(bucket), counts[job][view][bucket])
+                for bucket in duration_buckets
+            ]
+            yield buckets, durations[job][view], [job, view]
 
 
 def only(builds, states):
