@@ -12,7 +12,6 @@ import logging
 import os
 import time
 
-import dogpile.cache
 import requests
 
 from prometheus_client.core import (
@@ -25,9 +24,6 @@ from prometheus_client import start_http_server
 
 session = requests.Session()
 
-cache = dogpile.cache.make_region().configure(
-    'dogpile.cache.memory', expiration_time=1000
-)
 
 START = None
 
@@ -83,81 +79,69 @@ class GarbageCollectedBuild(Exception):
     pass
 
 
-@cache.cache_on_arguments()
-def retrieve_jenkins_jobs(url):
+def retrieve_recent_jenkins_builds(url):
+    params = dict(
+        tree="jobs[name,url,view,builds[number,timestamp,result,actions["
+        "blockedTimeMillis,buildingDurationMillis]]],views[name,jobs[name]]",
+    )
     url = url + '/api/json'
-
-    response = session.get(url, auth=AUTH)
+    response = session.get(url, params=params, auth=AUTH)
     response.raise_for_status()
 
     data = response.json()
 
-    results = []
+    views = {}
+    for view in data['views']:
+        for job in view['jobs']:
+            views[job['name']] = views.get(job['name'], [])
+            views[job['name']].append(view['name'])
+
+    jobs = []
+    builds = []
     for job in data['jobs']:
         if job['_class'] == 'com.cloudbees.hudson.plugins.folder.Folder':
-            results.extend(retrieve_jenkins_jobs(job['url']))
-        else:
-            results.append(job)
+            _jobs, _builds = retrieve_recent_jenkins_builds(job['url'])
+            jobs.extend(_jobs)
+            builds.extend(_builds)
+            continue
 
-    return results
+        job['views'] = views[job['name']]
+        jobs.append(job)
+
+        for build in all_seen_jenkins_builds(job, job['builds']):
+            cache_build_details(job, build)
+            timestamp = datetime.fromtimestamp(build['timestamp'] / 1000.0, tz=timezone.utc)
+            if timestamp < START:
+                break
+            build['job'] = job['name']
+            build['views'] = job['views']
+            builds.append(build)
+
+    return jobs, builds
 
 
-def _retrieve_build_details(job, build):
-    url = build['url'] + "/api/json"
-    response = session.get(url, auth=AUTH)
-    if response.status_code == 404:
-        raise GarbageCollectedBuild()
-    response.raise_for_status()
-    data = response.json()
-    return data
-
-
-def retrieve_build_details(job, build):
+def cache_build_details(job, build):
     if job['name'] not in BUILD_CACHE:
         BUILD_CACHE[job['name']] = {}
 
     if build['number'] not in BUILD_CACHE[job['name']]:
-        details = _retrieve_build_details(job, build)
-        if details['result'] in in_progress_states:
+        if build['result'] in in_progress_states:
             # Skip populating cache for incomplete builds.
-            return details
-        BUILD_CACHE[job['name']][build['number']] = details
+            return build
+        BUILD_CACHE[job['name']][build['number']] = build
 
     return BUILD_CACHE[job['name']][build['number']]
 
 
-def retrieve_all_seen_jenkins_builds(job):
-    url = job['url'] + "/api/json"
-    response = session.get(url, auth=AUTH)
-    response.raise_for_status()
-    data = response.json()
-
+def all_seen_jenkins_builds(job, builds):
     seen = []
-    seen = [build['number'] for build in data['builds']]
-    for build in data['builds']:
+    seen = [build['number'] for build in builds]
+    for build in builds:
         yield build
     for number in reversed(sorted(BUILD_CACHE.get(job['name'], {}).keys())):
         if number in seen:
             continue
         yield BUILD_CACHE[job['name']][number]
-
-
-def retrieve_recent_jenkins_builds(job):
-
-    results = []
-    for build in retrieve_all_seen_jenkins_builds(job):
-        try:
-            details = retrieve_build_details(job, build)
-        except GarbageCollectedBuild:
-            break
-
-        timestamp = datetime.fromtimestamp(details['timestamp'] / 1000.0, tz=timezone.utc)
-        if timestamp < START:
-            break
-        details['job'] = job['name']
-        results.append(details)
-
-    return results
 
 
 def jenkins_builds_total(builds):
@@ -239,15 +223,7 @@ def only(builds, states):
 
 
 def scrape():
-    global START
-    today = datetime.utcnow()
-    START = datetime.combine(today, datetime.min.time())
-    START = START.replace(tzinfo=timezone.utc)
-
-    builds = []
-    jobs = retrieve_jenkins_jobs(JENKINS_URL)
-    for job in jobs:
-        builds.extend(retrieve_recent_jenkins_builds(job))
+    jobs, builds = retrieve_recent_jenkins_builds(JENKINS_URL)
 
     jenkins_builds_total_family = CounterMetricFamily(
         'jenkins_builds_total', 'Count of all jenkins builds', labels=BUILD_LABELS
@@ -300,6 +276,9 @@ class Expositor(object):
 
 
 if __name__ == '__main__':
+    START = datetime.utcnow()
+    START = START.replace(tzinfo=timezone.utc)
+
     logging.basicConfig(level=logging.DEBUG)
     for collector in list(REGISTRY._collector_to_names):
         REGISTRY.unregister(collector)
