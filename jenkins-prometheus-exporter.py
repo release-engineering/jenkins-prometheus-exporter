@@ -213,7 +213,7 @@ def jenkins_build_duration_seconds(builds):
             durations[job][view] = durations[job].get(view, 0)
             counts[job][view] = counts[job].get(view, {})
             for bucket in duration_buckets:
-                counts[job][view][bucket] = counts[job].get(bucket, 0)
+                counts[job][view][bucket] = counts[job][view].get(bucket, 0)
 
             # Increment applicable bucket counts and duration sums
             durations[job][view] += duration
