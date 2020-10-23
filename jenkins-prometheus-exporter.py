@@ -149,15 +149,20 @@ def all_seen_jenkins_builds(job, builds):
         yield BUILD_CACHE[job['name']][number]
 
 
-def jenkins_builds_total(builds):
+def jenkins_builds_total(jobs, builds):
+
+    # Initialize with zeroes.
     counts = {}
+    for job in jobs:
+        counts[job['name']] = counts.get(job['name'], {})
+        for view in job['views']:
+            counts[job['name']][view] = counts[job['name']].get(view, 0)
+
     for build in builds:
         job = build['job']
         views = build['views']
 
-        counts[job] = counts.get(job, {})
         for view in views:
-            counts[job][view] = counts[job].get(view, 0)
             counts[job][view] += 1
 
     for job in counts:
@@ -187,13 +192,23 @@ def find_applicable_buckets(duration):
             yield bucket
 
 
-def jenkins_build_duration_seconds(builds):
+def jenkins_build_duration_seconds(jobs, builds):
     duration_buckets = DURATION_BUCKETS + ["+Inf"]
 
     # Build counts of observations into histogram "buckets"
     counts = {}
     # Sum of all observed durations
     durations = {}
+
+    # Initialize with zeroes.
+    for job in jobs:
+        durations[job['name']] = durations.get(job['name'], {})
+        counts[job['name']] = counts.get(job['name'], {})
+        for view in job['views']:
+            durations[job['name']][view] = durations[job['name']].get(view, 0)
+            counts[job['name']][view] = counts[job['name']].get(view, {})
+            for bucket in duration_buckets:
+                counts[job['name']][view][bucket] = counts[job['name']][view].get(bucket, 0)
 
     for build in builds:
         job = build['job']
@@ -206,15 +221,7 @@ def jenkins_build_duration_seconds(builds):
         except Unmeasurablebuild:
             continue
 
-        # Initialize structures
-        durations[job] = durations.get(job, {})
-        counts[job] = counts.get(job, {})
         for view in views:
-            durations[job][view] = durations[job].get(view, 0)
-            counts[job][view] = counts[job].get(view, {})
-            for bucket in duration_buckets:
-                counts[job][view][bucket] = counts[job][view].get(bucket, 0)
-
             # Increment applicable bucket counts and duration sums
             durations[job][view] += duration
             for bucket in find_applicable_buckets(duration):
@@ -242,14 +249,14 @@ def scrape():
     jenkins_builds_total_family = CounterMetricFamily(
         'jenkins_builds_total', 'Count of all jenkins builds', labels=BUILD_LABELS
     )
-    for value, labels in jenkins_builds_total(builds):
+    for value, labels in jenkins_builds_total(jobs, builds):
         jenkins_builds_total_family.add_metric(labels, value)
 
     jenkins_build_errors_total_family = CounterMetricFamily(
         'jenkins_build_errors_total', 'Count of all jenkins build errors', labels=BUILD_LABELS
     )
     error_builds = only(builds, states=error_states)
-    for value, labels in jenkins_builds_total(error_builds):
+    for value, labels in jenkins_builds_total(jobs, error_builds):
         jenkins_build_errors_total_family.add_metric(labels, value)
 
     jenkins_in_progress_builds_family = GaugeMetricFamily(
@@ -258,7 +265,7 @@ def scrape():
         labels=BUILD_LABELS,
     )
     in_progress_builds = only(builds, states=in_progress_states)
-    for value, labels in jenkins_builds_total(in_progress_builds):
+    for value, labels in jenkins_builds_total(jobs, in_progress_builds):
         jenkins_in_progress_builds_family.add_metric(labels, value)
 
     jenkins_build_duration_seconds_family = HistogramMetricFamily(
@@ -266,7 +273,7 @@ def scrape():
         'Histogram of jenkins build durations',
         labels=BUILD_LABELS,
     )
-    for buckets, duration_sum, labels in jenkins_build_duration_seconds(builds):
+    for buckets, duration_sum, labels in jenkins_build_duration_seconds(jobs, builds):
         jenkins_build_duration_seconds_family.add_metric(labels, buckets, sum_value=duration_sum)
 
     # Replace this in one atomic operation to avoid race condition to the Expositor
