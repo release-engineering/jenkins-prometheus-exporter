@@ -22,8 +22,18 @@ from prometheus_client.core import (
 )
 from prometheus_client import start_http_server
 
-session = requests.Session()
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 
+retry_strategy = Retry(
+    total=5,
+    status_forcelist=[429, 500, 502, 503, 504],
+    method_whitelist=["HEAD", "GET", "OPTIONS"]
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+session = requests.Session()
+session.mount("https://", adapter)
+session.mount("http://", adapter)
 
 START = None
 
