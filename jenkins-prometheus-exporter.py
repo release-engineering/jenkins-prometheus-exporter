@@ -142,11 +142,18 @@ def all_seen_jenkins_builds(job, builds):
     seen = []
     seen = [build['number'] for build in builds]
     for build in builds:
+        timestamp = datetime.fromtimestamp(build['timestamp'] / 1000.0, tz=timezone.utc)
+        if timestamp < START:
+            break
         yield build
     for number in reversed(sorted(BUILD_CACHE.get(job['name'], {}).keys())):
         if number in seen:
             continue
-        yield BUILD_CACHE[job['name']][number]
+        build = BUILD_CACHE[job['name']][number]
+        timestamp = datetime.fromtimestamp(build['timestamp'] / 1000.0, tz=timezone.utc)
+        if timestamp < START:
+            break
+        yield build
 
 
 def jenkins_builds_total(jobs, builds):
@@ -244,6 +251,14 @@ def only(builds, states):
 
 
 def scrape():
+    global START
+    today = datetime.utcnow()
+    START = datetime.combine(today, datetime.min.time())
+    START = START.replace(tzinfo=timezone.utc)
+
+    if START < startup:
+        START = startup
+
     jobs, builds = retrieve_recent_jenkins_builds(JENKINS_URL)
 
     jenkins_builds_total_family = CounterMetricFamily(
@@ -297,8 +312,8 @@ class Expositor(object):
 
 
 if __name__ == '__main__':
-    START = datetime.utcnow()
-    START = START.replace(tzinfo=timezone.utc)
+    now = datetime.utcnow()
+    startup = now.replace(tzinfo=timezone.utc)
 
     logging.basicConfig(level=logging.DEBUG)
     for collector in list(REGISTRY._collector_to_names):
