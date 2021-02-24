@@ -1,7 +1,5 @@
-This is an experimental prometheus exporter for "pulp" that just exposes information about tasks.
+This is an experimental prometheus exporter for "jenkins" that exposes more per-job information that
+the existing [prometheus plugin for jenkins](https://plugins.jenkins.io/prometheus/).
 
-This polls pulp looking for tasks created since startup and exposes metrics about those tasks
+This polls jenkins looking for builds created since startup and exposes metrics about those builds
 for a prometheus server.
-
-Instead of building on this, we should get a prometheus endpoint added to pulp itself, which
-would be far less wasteful.
