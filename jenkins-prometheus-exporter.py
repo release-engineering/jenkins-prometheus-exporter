@@ -99,7 +99,7 @@ def retrieve_recent_jenkins_builds(url):
         "blockedTimeMillis,buildingDurationMillis]]],views[name,jobs[name]]",
     )
     url = url + '/api/json'
-    response = session.get(url, params=params, auth=AUTH)
+    response = session.get(url, params=params, auth=AUTH, timeout=30)
     response.raise_for_status()
 
     data = response.json()
