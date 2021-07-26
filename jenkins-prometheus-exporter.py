@@ -124,7 +124,7 @@ def retrieve_recent_jenkins_builds(url):
         job['views'] = views.get(job['name'], ['no view defined'])
         jobs.append(job)
 
-        for build in all_seen_jenkins_builds(job, job['builds']):
+        for build in all_seen_jenkins_builds(job, job.get('builds', [])):
             cache_build_details(job, build)
             timestamp = datetime.fromtimestamp(build['timestamp'] / 1000.0, tz=timezone.utc)
             if timestamp < START:
