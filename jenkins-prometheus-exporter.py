@@ -29,7 +29,7 @@ retry_strategy = Retry(
     total=3,
     backoff_factor=1,
     status_forcelist=[429, 500, 502, 503, 504],
-    method_whitelist=["HEAD", "GET", "OPTIONS"]
+    method_whitelist=["HEAD", "GET", "OPTIONS"],
 )
 adapter = HTTPAdapter(max_retries=retry_strategy)
 session = requests.Session()
@@ -73,23 +73,32 @@ error_states = [
     'ABORTED',
     'UNSTABLE',
 ]
+
+unstable_states = [
+    'UNSTABLE',
+]
+
+
 in_progress_states = [
     None,
 ]
 
 
 class Incompletebuild(Exception):
-    """ Error raised when a jenkins build is not complete. """
+    """Error raised when a jenkins build is not complete."""
+
     pass
 
 
 class Unmeasurablebuild(Exception):
-    """ Error raised when a jenkins build is missing the measurement plugin. """
+    """Error raised when a jenkins build is missing the measurement plugin."""
+
     pass
 
 
 class GarbageCollectedBuild(Exception):
-    """ Error raised when a jenkins build is just gone. """
+    """Error raised when a jenkins build is just gone."""
+
     pass
 
 
@@ -126,7 +135,9 @@ def retrieve_recent_jenkins_builds(url):
 
         for build in all_seen_jenkins_builds(job, job.get('builds', [])):
             cache_build_details(job, build)
-            timestamp = datetime.fromtimestamp(build['timestamp'] / 1000.0, tz=timezone.utc)
+            timestamp = datetime.fromtimestamp(
+                build['timestamp'] / 1000.0, tz=timezone.utc
+            )
             if timestamp < START:
                 break
             build['job'] = job['name']
@@ -198,7 +209,9 @@ def calculate_duration(build):
         raise Incompletebuild("build is not yet complete.  Duration is undefined.")
     for action in build['actions']:
         if action.get('_class') == 'jenkins.metrics.impl.TimeInQueueAction':
-            return (action['blockedTimeMillis'] + action['buildingDurationMillis']) / 1000.0
+            return (
+                action['blockedTimeMillis'] + action['buildingDurationMillis']
+            ) / 1000.0
 
     raise Unmeasurablebuild("No TimeInQueueAction plugin found")
 
@@ -226,7 +239,9 @@ def jenkins_build_duration_seconds(jobs, builds):
             durations[job['name']][view] = durations[job['name']].get(view, 0)
             counts[job['name']][view] = counts[job['name']].get(view, {})
             for bucket in duration_buckets:
-                counts[job['name']][view][bucket] = counts[job['name']][view].get(bucket, 0)
+                counts[job['name']][view][bucket] = counts[job['name']][view].get(
+                    bucket, 0
+                )
 
     for build in builds:
         job = build['job']
@@ -248,8 +263,7 @@ def jenkins_build_duration_seconds(jobs, builds):
     for job in counts:
         for view in counts[job]:
             buckets = [
-                (str(bucket), counts[job][view][bucket])
-                for bucket in duration_buckets
+                (str(bucket), counts[job][view][bucket]) for bucket in duration_buckets
             ]
             yield buckets, durations[job][view], [job, view]
 
@@ -279,11 +293,22 @@ def scrape():
         jenkins_builds_total_family.add_metric(labels, value)
 
     jenkins_build_errors_total_family = CounterMetricFamily(
-        'jenkins_build_errors_total', 'Count of all jenkins build errors', labels=BUILD_LABELS
+        'jenkins_build_errors_total',
+        'Count of all jenkins build errors',
+        labels=BUILD_LABELS,
     )
     error_builds = only(builds, states=error_states)
     for value, labels in jenkins_builds_total(jobs, error_builds):
         jenkins_build_errors_total_family.add_metric(labels, value)
+
+    jenkins_build_unstable_total_family = CounterMetricFamily(
+        'jenkins_build_unstable_total',
+        'Count of all jenkins builds in the unstable state',
+        labels=BUILD_LABELS,
+    )
+    unstable_builds = only(builds, states=unstable_states)
+    for value, labels in jenkins_builds_total(jobs, unstable_builds):
+        jenkins_build_unstable_total_family.add_metric(labels, value)
 
     jenkins_in_progress_builds_family = GaugeMetricFamily(
         'jenkins_in_progress_builds',
@@ -300,13 +325,16 @@ def scrape():
         labels=BUILD_LABELS,
     )
     for buckets, duration_sum, labels in jenkins_build_duration_seconds(jobs, builds):
-        jenkins_build_duration_seconds_family.add_metric(labels, buckets, sum_value=duration_sum)
+        jenkins_build_duration_seconds_family.add_metric(
+            labels, buckets, sum_value=duration_sum
+        )
 
     # Replace this in one atomic operation to avoid race condition to the Expositor
     metrics.update(
         {
             'jenkins_builds_total': jenkins_builds_total_family,
             'jenkins_build_errors_total': jenkins_build_errors_total_family,
+            'jenkins_build_unstable_total': jenkins_build_unstable_total_family,
             'jenkins_in_progress_builds': jenkins_in_progress_builds_family,
             'jenkins_build_duration_seconds': jenkins_build_duration_seconds_family,
         }
@@ -314,7 +342,7 @@ def scrape():
 
 
 class Expositor(object):
-    """ Responsible for exposing metrics to prometheus """
+    """Responsible for exposing metrics to prometheus"""
 
     def collect(self):
         logging.info("Serving prometheus data")
