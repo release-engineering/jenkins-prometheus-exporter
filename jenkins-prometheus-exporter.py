@@ -42,12 +42,12 @@ START = None
 
 JENKINS_URL = os.environ['JENKINS_URL']  # Required
 if os.environ.get('JENKINS_USERNAME') and os.environ.get('JENKINS_TOKEN'):
-    log.info(f"Configured with authentication for {JENKINS_URL}")
+    logging.info(f"Configured with authentication for {JENKINS_URL}")
     JENKINS_USERNAME = os.environ['JENKINS_USERNAME']
     JENKINS_TOKEN = os.environ['JENKINS_TOKEN']
     AUTH = (JENKINS_USERNAME, JENKINS_TOKEN)
 else:
-    log.info(f"Configured to connect anonymously to {JENKINS_URL}")
+    logging.info(f"Configured to connect anonymously to {JENKINS_URL}")
     AUTH = None
 
 DEFAULT_IGNORED = '00-all-enabled,01-all-disabled,all,All,My View'
