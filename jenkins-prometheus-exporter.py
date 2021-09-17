@@ -25,6 +25,8 @@ from prometheus_client import start_http_server
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
+logging.basicConfig(level=logging.DEBUG)
+
 retry_strategy = Retry(
     total=3,
     backoff_factor=1,
@@ -40,10 +42,12 @@ START = None
 
 JENKINS_URL = os.environ['JENKINS_URL']  # Required
 if os.environ.get('JENKINS_USERNAME') and os.environ.get('JENKINS_TOKEN'):
+    log.info(f"Configured with authentication for {JENKINS_URL}")
     JENKINS_USERNAME = os.environ['JENKINS_USERNAME']
     JENKINS_TOKEN = os.environ['JENKINS_TOKEN']
     AUTH = (JENKINS_USERNAME, JENKINS_TOKEN)
 else:
+    log.info(f"Configured to connect anonymously to {JENKINS_URL}")
     AUTH = None
 
 DEFAULT_IGNORED = '00-all-enabled,01-all-disabled,all,All,My View'
@@ -354,7 +358,6 @@ if __name__ == '__main__':
     now = datetime.utcnow()
     startup = now.replace(tzinfo=timezone.utc)
 
-    logging.basicConfig(level=logging.DEBUG)
     for collector in list(REGISTRY._collector_to_names):
         REGISTRY.unregister(collector)
     REGISTRY.register(Expositor())
