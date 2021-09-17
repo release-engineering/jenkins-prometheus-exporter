@@ -39,7 +39,7 @@ session.mount("http://", adapter)
 START = None
 
 JENKINS_URL = os.environ['JENKINS_URL']  # Required
-if 'JENKINS_USERNAME' in os.environ and 'JENKINS_TOKEN' in os.environ:
+if os.environ.get('JENKINS_USERNAME') and os.environ.get('JENKINS_TOKEN'):
     JENKINS_USERNAME = os.environ['JENKINS_USERNAME']
     JENKINS_TOKEN = os.environ['JENKINS_TOKEN']
     AUTH = (JENKINS_USERNAME, JENKINS_TOKEN)
