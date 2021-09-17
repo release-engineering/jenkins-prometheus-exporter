@@ -42,10 +42,15 @@ START = None
 
 JENKINS_URL = os.environ['JENKINS_URL']  # Required
 if os.environ.get('JENKINS_USERNAME') and os.environ.get('JENKINS_TOKEN'):
-    logging.info(f"Configured with authentication for {JENKINS_URL}")
+    logging.info(f"Configured with basic authentication for {JENKINS_URL}")
     JENKINS_USERNAME = os.environ['JENKINS_USERNAME']
     JENKINS_TOKEN = os.environ['JENKINS_TOKEN']
     AUTH = (JENKINS_USERNAME, JENKINS_TOKEN)
+elif os.environ.get('JENKINS_TOKEN'):
+    logging.info(f"Configured with bearer token authentication for {JENKINS_URL}")
+    TOKEN = os.environ.get('JENKINS_TOKEN')
+    session.headers['Authorization'] = f'Bearer {TOKEN}'
+    AUTH = None
 else:
     logging.info(f"Configured to connect anonymously to {JENKINS_URL}")
     AUTH = None
