@@ -111,7 +111,7 @@ class GarbageCollectedBuild(Exception):
     pass
 
 
-def retrieve_recent_jenkins_builds(url):
+def retrieve_recent_jenkins_builds(url, views=None):
     params = dict(
         tree="jobs[name,url,view,builds[number,timestamp,result,actions["
         "blockedTimeMillis,buildingDurationMillis]]],views[name,jobs[name]]",
@@ -122,7 +122,7 @@ def retrieve_recent_jenkins_builds(url):
 
     data = response.json()
 
-    views = {}
+    views = views or {}
     for view in data['views']:
         if view['name'].strip() in IGNORED_VIEWS:
             continue
@@ -134,7 +134,7 @@ def retrieve_recent_jenkins_builds(url):
     builds = []
     for job in data['jobs']:
         if job['_class'] == 'com.cloudbees.hudson.plugins.folder.Folder':
-            _jobs, _builds = retrieve_recent_jenkins_builds(job['url'])
+            _jobs, _builds = retrieve_recent_jenkins_builds(job['url'], views=views)
             jobs.extend(_jobs)
             builds.extend(_builds)
             continue
