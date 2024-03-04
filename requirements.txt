@@ -6,7 +6,7 @@ idna==3.6
 importlib-metadata==7.0.1
 pbr==6.0.0
 prometheus-client==0.20.0
-python-dateutil==2.8.2
+python-dateutil==2.9.0.post0
 requests==2.31.0
 six==1.16.0
 stevedore==5.2.0
