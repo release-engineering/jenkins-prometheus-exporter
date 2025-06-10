@@ -7,7 +7,7 @@ importlib-metadata==8.7.0
 pbr==6.1.1
 prometheus-client==0.22.1
 python-dateutil==2.9.0.post0
-requests==2.32.3
+requests==2.32.4
 six==1.17.0
 stevedore==5.4.1
 urllib3==2.4.0
