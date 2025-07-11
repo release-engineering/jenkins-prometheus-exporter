@@ -44,7 +44,7 @@ JENKINS_URL = os.environ['JENKINS_URL']  # Required
 # Due to the deploymentconfig, all Jenkins instances need a secret defined for the token.  There's
 # no knowledge that allows a conditional for whether a secret will exist and therefore include it in
 # the deployment config for any particular Jenkins instance.  Work around this by using the value 'none'
-if os.environ.get('JENKINS_TOKEN') = 'none':
+if os.environ.get('JENKINS_TOKEN') == 'none':
     logging.info(f"Configured to connect anonymously to {JENKINS_URL}")
     AUTH = None
 elif os.environ.get('JENKINS_USERNAME') and os.environ.get('JENKINS_TOKEN'):
