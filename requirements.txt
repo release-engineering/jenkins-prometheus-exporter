@@ -4,7 +4,7 @@ chardet==5.2.0
 decorator==5.2.1
 idna==3.11
 importlib-metadata==8.7.0
-pbr==7.0.1
+pbr==7.0.2
 prometheus-client==0.23.1
 python-dateutil==2.9.0.post0
 requests==2.32.5
