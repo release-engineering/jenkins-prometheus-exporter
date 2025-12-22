@@ -3,7 +3,7 @@ certifi==2025.11.12
 chardet==5.2.0
 decorator==5.2.1
 idna==3.11
-importlib-metadata==8.7.0
+importlib-metadata==8.7.1
 pbr==7.0.3
 prometheus-client==0.23.1
 python-dateutil==2.9.0.post0
