@@ -5,7 +5,7 @@ decorator==5.3.1
 idna==3.18
 importlib-metadata==9.0.0
 pbr==7.0.3
-prometheus-client==0.25.0
+prometheus-client==0.26.0
 python-dateutil==2.9.0.post0
 requests==2.34.2
 six==1.17.0
